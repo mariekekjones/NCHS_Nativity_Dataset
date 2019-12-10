@@ -1,0 +1,253 @@
+---
+title: "Creating clean Nativity Dataset"
+author: "Marieke Jones, PhD"
+date: "12/10/2019"
+output: html_document
+---
+
+Load libraries
+
+```{r}
+library(tidyverse)
+library(forcats)
+```
+
+The file I want to load is a fixed width file where the widths are specified by a 95 page PDF table. Using the PDF_Peeler.Rmd file we parsed the PDF table into a useable csv file.
+
+From:
+https://www.cdc.gov/nchs/data_access/Vitalstatsonline.htm
+
+Get column information.
+
+>Note that before loading the codebook_decoder, I added a column called Want to the codebook_decoder to mark which columns are of interest
+
+```{r}
+columns <- read_csv("codebook_decoder.csv")
+column_lengths <- columns %>% pull(Length)
+column_names <- columns %>% pull(Variable)
+```
+
+Read in full dataset using column widths
+
+```{r}
+col_widths <- fwf_widths(column_lengths, column_names)
+full_data <- read_fwf("Nat2018.txt", col_positions = col_widths)
+```
+
+Sample 20000 rows
+
+```{r}
+set.seed(6274353) # marieke in phone digits
+nat <- sample_n(full_data, 20000)
+# rm(full_data)
+```
+
+Subset for columns of interest
+
+```{r}
+keep_cols <- columns %>%
+  filter(Want == "X") %>%
+  pull(name)
+
+nat <- nat %>%
+  select(one_of(keep_cols))
+```
+
+Resulting Dataset has dimensions: `r dim(nat)`
+
+How many c-sects in subset?
+
+```{r}
+nat %>%
+  count(DMETH_REC)
+```
+
+Recode missings as NA
+```{r}
+nat <- nat %>%
+  mutate(DOB_TT = na_if(DOB_TT, 9999),
+         DMAR = na_if(DMAR, 9),
+         MEDUC = na_if(MEDUC, 9), 
+         FAGECOMB = na_if(FAGECOMB, 99),
+         FRACE6 = na_if(FRACE6, 9),
+         FEDUC = na_if(FEDUC, 9),
+         PRIORLIVE = na_if(PRIORLIVE, 99),
+         PRIORTERM = na_if(PRIORTERM, 99),
+         TBO_REC = na_if(TBO_REC, 9),
+         PREVIS = na_if(PREVIS, 99),
+         M_Ht_In = na_if(M_Ht_In, 99),
+         BMI = na_if(BMI, 99.9),
+         DWgt_R = na_if(DWgt_R, 999),
+         WTGAIN = na_if(WTGAIN, 99),
+         RF_CESARN = na_if(RF_CESARN, 99),
+         NO_RISKS = na_if(NO_RISKS, 9),
+         ME_PRES = na_if(ME_PRES, 9),
+         ME_ROUT = na_if(ME_ROUT, 9),
+         RDMETH_REC = na_if(RDMETH_REC, 9),
+         DMETH_REC = na_if(DMETH_REC, 9),
+         ATTEND = na_if(ATTEND, 9),
+         APGAR5 = na_if(APGAR5, 99),
+         COMBGEST = na_if(COMBGEST, 99),
+         DBWT = na_if(DBWT, 9999))
+```
+
+Drop a few more variables
+
+```{r}
+nat <- nat %>%
+  select(-MAR_P, -RF_CESAR, -RDMETH_REC)
+```
+
+Use forcats to recode variables
+fct_recode(x, new = "old", new = "old")
+
+BFACIL3:
+1 In Hospital
+2 Not in Hospital
+3 Unknown or Not Stated
+
+MRACE6:
+1 White (only)
+2 Black (only)
+3 AIAN (only)
+4 Asian (only)
+5 NHOPI (only)
+6 More than one race
+
+DMAR:
+1 Yes
+2 Unmarried
+
+MEDUC:
+1 8th grade or less
+2 9th through 12th grade with no diploma
+3 High school graduate or GED completed
+4 Some college credit, but not a degree.
+5 Associate degree (AA,AS)
+6 Bachelor’s degree (BA, AB, BS)
+7 Master’s degree (MA, MS, MEng, MEd, MSW, MBA)
+8 Doctorate (PhD, EdD) or Professional Degree (MD, DDS,
+DVM, LLB, JD) 
+9 Unknown
+
+FRACE6
+1 White (only)
+2 Black (only)
+3 AIAN (only)
+4 Asian (only)
+5 NHOPI (only)
+6 More than one race
+9 Unknown or Not Stated
+
+ME_PRES
+1 Cephalic
+2 Breech
+3 Other
+9 Unknown or not stated
+
+ME_ROUT
+1 Spontaneous 2 Forceps
+3 Vacuum
+4 Cesarean
+9 Unknown or not stated
+
+DMETH_REC
+1 Vaginal
+2 C-Section 
+9 Unknown
+
+ATTEND
+1 Doctor of Medicine (MD)
+2 Doctor of Osteopathy (DO)
+3 Certified Nurse Midwife (CNM) 4 Other Midwife
+5 Other
+9 Unknown or not stated
+
+```{r}
+nat <- nat %>%
+  mutate(BFACIL3 = fct_recode(as.factor(BFACIL3), 
+                              Hosp = "1", 
+                              NoHosp = "2", 
+                              Unknown = "3"),
+         MRACE6 = fct_recode(as.factor(MRACE6), 
+                             White = "1", 
+                             Black = "2", 
+                             AIAN = "3", 
+                             Asian = "4", 
+                             NHOPI = "5", 
+                             MoreThan1 = "6"),
+         DMAR = fct_collapse(as.factor(DMAR), 
+                             Married = "1", 
+                             Unmarried = "2"),
+         MEDUC = fct_collapse(as.factor(MEDUC), 
+                              NoHighSchool = "1", 
+                              SomeHighSchool = "2", 
+                              HighSchoolGrad = "3", 
+                              SomeCollege = "4", 
+                              Associates = "5", 
+                              Bachelors = "6", 
+                              Masters = "7", 
+                              DoctorateProfess = "8"),
+         FRACE6 = fct_recode(as.factor(FRACE6), 
+                             White = "1", 
+                             Black = "2", 
+                             AIAN = "3", 
+                             Asian = "4", 
+                             NHOPI = "5", 
+                             MoreThan1 = "6"),
+         ME_PRES = fct_recode(as.factor(ME_PRES), 
+                              Cephalic = "1", 
+                              Breech = "2", 
+                              Other = "3"),
+         ME_ROUT = fct_recode(as.factor(ME_ROUT), 
+                              Spontaneous = "1", 
+                              Forceps = "2", 
+                              Vacuum = "3",
+                              Cesarean = "4"),
+         DMETH_REC = fct_recode(as.factor(DMETH_REC), 
+                              Vaginal = "1", 
+                              Cesarean = "2"),
+         ATTEND = fct_recode(as.factor(ATTEND), 
+                              MD = "1", 
+                              DO = "2",
+                             CNM = "3",
+                             OtherMidwife = "4",
+                             Other = "5")
+         )
+```
+
+Check on progress
+```{r}
+glimpse(nat)
+```
+
+The following variables need to be mutated as.numeric
+DOB_MM 
+DOB_TT
+PRIORLIVE
+PRIORTERM
+PREVIS
+WTGAIN
+RF_CESARN
+APGAR5
+DBWT
+
+```{r}
+nat <- nat %>%
+  mutate(DOB_MM = as.numeric(DOB_MM),
+         DOB_TT = as.numeric(DOB_TT),
+         PRIORLIVE = as.numeric(PRIORLIVE),
+         PRIORTERM = as.numeric(PRIORTERM),
+         PREVIS = as.numeric(PREVIS),
+         WTGAIN = as.numeric(WTGAIN),
+         RF_CESARN = as.numeric(RF_CESARN),
+         APGAR5 = as.numeric(APGAR5),
+         DBWT = as.numeric(DBWT))
+```
+
+We will still need to deal with Y/N questions to set them as 1/0 but I'll have the students do that.
+
+Write out clean datafile
+```{r}
+write_csv(nat, "Nativity2018_clean.csv")
+```

@@ -1,0 +1,126 @@
+---
+title: "PDF peeler"
+author: "David Martin"
+date: "12/6/2019"
+output: html_document
+---
+
+# Goal
+
+We want to load a fixed width format (FWF) file from the CDC for a workshop, specifically from
+https://www.cdc.gov/nchs/data_access/Vitalstatsonline.htm. In order to load a FWF file, we will need to specify the widths of each column or the positions of columns of interest.
+
+Along with the FWF datafile, the CDC has published a PDF with a table detailing each column with its width and position.
+
+This script reads the PDF user guide and parses the width and position of each column.
+
+# Load packages
+
+```{r}
+# install.packages("pdftools")
+library(pdftools)
+library(tidyverse)
+library(stringr)
+```
+
+# Read in the PDF
+
+```{r}
+userguide <- pdf_text("UserGuide2018-508.pdf")
+```
+
+Split the PDF on the new line `\n`
+
+```{r}
+table_data <- userguide %>%
+  str_split(pattern = "\n") %>% 
+  unlist()
+```
+
+Pull out any lines that start with whitespace or with digits since those are lines we are interested in. Set any other lines to "drop"
+
+```{r}
+Position <- ifelse(str_sub(str_sub(str_trim(table_data), 1, 50), 1, 1) != " " &
+                     str_detect(str_sub(str_sub(str_trim(table_data), 1, 50), 1, 1), "[:digit:]"), 
+                   str_trim(str_sub(table_data, 1, 45)), "drop")
+```
+
+Look at ones that are not drop
+
+```{r}
+as.data.frame(Position) %>%
+  filter(Position != "drop")
+```
+
+First two are not data lines so drop those along with all the ones called drop
+```{r}
+pos <- as.data.frame(Position) %>% 
+  filter(Position != "1900-2018" & 
+           Position != "drop" & 
+           Position != "2018 Natality Public Use File") 
+```
+
+Main table starts at line 14, so drop lines 1-13
+
+```{r}
+pos <- as.data.frame(pos[-c(1:13), ])
+```
+
+Main table stops at line 880 and appendix tables are after that so drop all appendices
+
+
+```{r}
+pos <- pos[-c(881:nrow(pos)),]
+```
+
+Now separate the entries based on whitespace where the entry has 1 or more characters
+
+```{r}
+# split the first row based on whitespace
+str_split(pos[1], pattern = " ")
+# we get lots of whitespaces in between the entries
+
+# split where the nchar >= 1
+new_data <- lapply(str_split(pos, pattern = " "), function(x) x[nchar(x) >= 1])
+
+# keep entries where length is > 0 and < 4
+new_data <- new_data[lapply(new_data, length)>0 & lapply(new_data, length) <= 4]
+```
+
+Rows should each have 3 entries. Find ones that don't
+
+```{r}
+lengths(new_data)
+which(lengths(new_data) == 4)
+# 19 116 178 197 256 281
+
+new_data[[19]] <- new_data[[19]][-4]
+new_data[[116]] <- new_data[[116]][-4] # this is a header
+new_data[[178]] <- new_data[[178]][-4] # this is a header
+new_data[[197]] <- new_data[[197]][-4] # name got cut
+new_data[[197]][3] <- "F_MM_PLAC"
+new_data[[256]] <- new_data[[256]][-4]
+new_data[[281]] <- new_data[[281]][-4]
+```
+
+Turn the output into a dataframe
+
+```{r}
+df <- data.frame(matrix(unlist(new_data), ncol = 3, byrow = TRUE))
+names(df) <- c("Position", "Length", "Variable")
+```
+
+A few entries are not a data row but are a header. We can remove those based on long lengths. This will also get rid of some of the filler columns but that is fine.
+
+```{r}
+df <- df %>% 
+  mutate(Length = as.numeric(as.character(Length))) %>% 
+  filter(Length < 10)
+```
+
+Write out the df into a csv that we can use to read in the main file
+
+```{r}
+write_csv(df, "codebook_decoder.csv")
+```
+
