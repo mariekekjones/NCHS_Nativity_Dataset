@@ -14,6 +14,17 @@ library(forcats)
 
 The file I want to load is a fixed width file where the widths are specified by a 95 page PDF table. Using the PDF_Peeler.Rmd file we parsed the PDF table into a useable csv file.
 
+2020-06-03
+**There were some issues in the codebook decoder that I fixed by hand** I plan to come back in and fix them programmatically
+
+PDF Peeler should NOT filter out the FILLER columns -- that messes everything up
+Codebook decoder has several errors stemming from errors in the codebook provided by the CDC:
+- position 1-8 has length 8 not 6
+- position 107 has length 1 not 2
+- position 365-382 has length 18 not 17
+
+I changed these manually, but I could programmatically change them in the columns dataset
+
 From:
 https://www.cdc.gov/nchs/data_access/Vitalstatsonline.htm
 
@@ -34,12 +45,14 @@ col_widths <- fwf_widths(column_lengths, column_names)
 full_data <- read_fwf("Nat2018.txt", col_positions = col_widths)
 ```
 
+# HSL workshops
+
 Sample 20000 rows
 
 ```{r}
 set.seed(6274353) # marieke in phone digits
 nat <- sample_n(full_data, 20000)
-# rm(full_data)
+# rm(nat)
 ```
 
 Subset for columns of interest
@@ -47,7 +60,7 @@ Subset for columns of interest
 ```{r}
 keep_cols <- columns %>%
   filter(Want == "X") %>%
-  pull(name)
+  pull(Variable)
 
 nat <- nat %>%
   select(one_of(keep_cols))
@@ -83,7 +96,7 @@ nat <- nat %>%
          NO_RISKS = na_if(NO_RISKS, 9),
          ME_PRES = na_if(ME_PRES, 9),
          ME_ROUT = na_if(ME_ROUT, 9),
-         RDMETH_REC = na_if(RDMETH_REC, 9),
+         RDMETH_RE = na_if(RDMETH_RE, 9),
          DMETH_REC = na_if(DMETH_REC, 9),
          ATTEND = na_if(ATTEND, 9),
          APGAR5 = na_if(APGAR5, 99),
@@ -95,7 +108,7 @@ Drop a few more variables
 
 ```{r}
 nat <- nat %>%
-  select(-MAR_P, -RF_CESAR, -RDMETH_REC)
+  select(-MAR_P, -RF_CESAR, -RDMETH_RE)
 ```
 
 Use forcats to recode variables
